@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# change u home ip
+set -euo pipefail
+
+HOSTS_FILE="/etc/hosts"
+BACKUP_FILE="/etc/hosts.bak.$(date +%Y%m%d%H%M%S)"
+
+if [[ "${EUID}" -ne 0 ]]; then
+  echo "Error: run this script as root (use sudo)." >&2
+  exit 1
+fi
+
+cp -a "$HOSTS_FILE" "$BACKUP_FILE"
+echo "Backup created: $BACKUP_FILE"
+
+tmp="$(mktemp)"
+awk '
+  {
+    # skip comment-only lines
+    if ($0 ~ /^[[:space:]]*#/) { print; next }
+    # remove lines that contain localhost or facebook.com as a token
+    for (i=1; i<=NF; i++) {
+      if ($i == "localhost" || $i == "facebook.com") next
+    }
+    print
+  }
+' "$HOSTS_FILE" > "$tmp"
+
+# Append the required mappings
+{
+  echo ""
+  echo "# Added by server host configuration script"
+  echo "127.0.0.2 localhost"
+  echo "8.8.8.8 facebook.com"
+} >> "$tmp"
+
+# Replace hosts file safely
+install -m 0644 "$tmp" "$HOSTS_FILE"
+rm -f "$tmp"
+
+echo "Updated $HOSTS_FILE successfully."
+echo "Test:"
+echo "  getent hosts localhost"
+echo "  getent hosts facebook.com"
+
